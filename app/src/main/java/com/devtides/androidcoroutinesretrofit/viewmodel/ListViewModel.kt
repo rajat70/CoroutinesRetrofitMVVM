@@ -2,14 +2,16 @@ package com.devtides.androidcoroutinesretrofit.viewmodel
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.devtides.androidcoroutinesretrofit.model.CountriesService
 import com.devtides.androidcoroutinesretrofit.model.Country
+import kotlinx.coroutines.*
 import retrofit2.HttpException
 
 class ListViewModel: ViewModel() {
 
-    companion object {
-        private const val URL = "https://raw.githubusercontent.com/DevTides/countries/master/countriesV2.json"
-    }
+    private val countriesService = CountriesService.getCountriesService()
+    private var job: Job? = null
+    private val coroutineExceptionHandler = CoroutineExceptionHandler{_, throwable -> onError(throwable.message!!)}
 
     val countries = MutableLiveData<List<Country>>()
     val countryLoadError = MutableLiveData<String?>()
@@ -22,11 +24,18 @@ class ListViewModel: ViewModel() {
     private fun fetchCountries() {
         loading.value = true
 
-        val dummyData = generateDummyCountries()
-
-        countries.value = dummyData
-        countryLoadError.value = ""
-        loading.value = false
+        job = CoroutineScope(Dispatchers.IO + coroutineExceptionHandler).launch {
+            val response = countriesService.getCountries()
+            withContext(Dispatchers.Main) {
+                if (response.isSuccessful) {
+                    countries.value = response.body()
+                    countryLoadError.value = null
+                    loading.value = false
+                } else {
+                    onError("Error : ${response.message()}")
+                }
+            }
+        }
     }
 
     private fun generateDummyCountries(): List<Country> {
@@ -42,6 +51,11 @@ class ListViewModel: ViewModel() {
     private fun onError(message: String) {
         countryLoadError.value = message
         loading.value = false
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        job?.cancel()
     }
 
 }
